@@ -8,7 +8,7 @@ const { buildSystemPrompt, buildChartMetadataPrompt } = require('../services/sys
 const { fetchMarketContext, formatMarketContext, formatDailyBias, setDailyBias, getDailyBias } = require('../services/marketContext');
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-const MODEL = 'claude-haiku-4-5-20251001';
+const MODEL = 'claude-sonnet-4-6';
 
 // ─── Main Analyze Endpoint (RAG-Enhanced, Streaming) ──────────────
 // @route   POST /api/ai/analyze

@@ -212,7 +212,7 @@ const AICoach = () => {
               <div className="w-1 h-1 rounded-full bg-trade-green"/> System Online
             </p>
             <p className="text-[10px] text-gray-600 font-bold uppercase tracking-[0.2em] flex items-center gap-2 cursor-pointer hover:text-gray-400">
-              Model: Claude Haiku <ChevronDown size={10}/>
+              Model: Claude Sonnet <ChevronDown size={10}/>
             </p>
           </div>
         </div>

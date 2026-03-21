@@ -40,10 +40,11 @@ function extractQueryIntent(prompt) {
     'mss': 'MSS', 'market structure shift': 'MSS',
     'bos': 'BOS', 'break of structure': 'BOS',
     'fvg': 'FVG', 'fair value gap': 'FVG',
+    'ifvg': 'IFVG', 'inverse fvg': 'IFVG', 'inverse fair value gap': 'IFVG',
     'order block': 'Order Block', 'ob': 'Order Block',
     'liquidity sweep': 'Liquidity Sweep', 'liq sweep': 'Liquidity Sweep',
-    'killzone': 'Killzone', 'kill zone': 'Killzone',
-    'silver bullet': 'Silver Bullet'
+    'cisd': 'CISD', 'change in state of delivery': 'CISD',
+    'smt': 'SMT', 'smt divergence': 'SMT', 'smart money technique': 'SMT'
   };
   for (const [key, val] of Object.entries(conceptMap)) {
     if (lower.includes(key) && !intent.concepts.includes(val)) {

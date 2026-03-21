@@ -1,32 +1,21 @@
+const Anthropic = require('@anthropic-ai/sdk');
 const Trade = require('../models/Trade');
 const AIInsight = require('../models/AIInsight');
 
-/**
- * Memory Service — Long-Term AI Learning System
- * 
- * Every time a trade is logged, this service runs asynchronously to:
- * 1. Analyze the new trade in context of existing history
- * 2. Detect emerging patterns, weaknesses, and strengths
- * 3. Store/update "Learned Rules" in the AI_Insights collection
- * 4. Keep the AI's understanding of the trader's style evolving
- */
+const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+const MODEL = 'claude-haiku-4-5-20251001'; // Use Haiku for background jobs (cheap + fast)
 
-const OLLAMA_URL = 'http://localhost:11434/api/generate';
-
-// ─── Call Ollama for background insight generation ────────────────
-async function callOllama(prompt, model = 'llama3') {
+// ─── Call Claude for background insight generation ─────────────────
+async function callClaude(prompt) {
   try {
-    const response = await fetch(OLLAMA_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model, prompt, stream: false })
+    const message = await anthropic.messages.create({
+      model: MODEL,
+      max_tokens: 1000,
+      messages: [{ role: 'user', content: prompt }]
     });
-
-    if (!response.ok) return null;
-    const data = await response.json();
-    return data.response;
+    return message.content[0].text;
   } catch (err) {
-    console.error('[MemoryService] Ollama unavailable for background analysis:', err.message);
+    console.error('[MemoryService] Claude unavailable for background analysis:', err.message);
     return null;
   }
 }
@@ -37,27 +26,23 @@ async function processNewTrade(tradeId) {
     const trade = await Trade.findById(tradeId).lean();
     if (!trade) return;
 
-    // Get recent history for context
     const recentTrades = await Trade.find({ _id: { $ne: tradeId } })
       .sort({ date: -1 })
-      .limit(15)
+      .limit(20)
       .lean();
 
-    // Get same-market history
     const sameMarketTrades = await Trade.find({ market: trade.market, _id: { $ne: tradeId } })
       .sort({ date: -1 })
       .limit(10)
       .lean();
 
-    // Build analysis prompt
-    const analysisPrompt = buildInsightExtractionPrompt(trade, recentTrades, sameMarketTrades);
-    
-    const rawInsight = await callOllama(analysisPrompt);
+    const allTrades = await Trade.find().lean();
+
+    const analysisPrompt = buildInsightExtractionPrompt(trade, recentTrades, sameMarketTrades, allTrades);
+    const rawInsight = await callClaude(analysisPrompt);
     if (!rawInsight) return;
 
-    // Parse and store the insight
     await parseAndStoreInsights(rawInsight, trade);
-
     console.log(`[MemoryService] Processed insights for trade ${tradeId}`);
   } catch (err) {
     console.error('[MemoryService] Error processing trade:', err.message);
@@ -65,42 +50,61 @@ async function processNewTrade(tradeId) {
 }
 
 // ─── Build the Insight Extraction Prompt ──────────────────────────
-function buildInsightExtractionPrompt(newTrade, recentTrades, sameMarketTrades) {
+function buildInsightExtractionPrompt(newTrade, recentTrades, sameMarketTrades, allTrades) {
   const formatTrade = (t) => {
     const date = new Date(t.date).toLocaleDateString();
-    return `${date} | ${t.market} | ${t.outcome} | RR:${t.rrRatio} | Concepts: ${(t.concepts || []).join(',')} | "${t.narrative || ''}"`;
+    const dir = t.direction ? ` | ${t.direction}` : '';
+    const disc = t.disciplineRating ? ` | Discipline:${t.disciplineRating}/5` : '';
+    return `${date} | ${t.market}${dir} | ${t.outcome} | RR:${t.rrRatio} | Session:${t.session || 'unknown'} | Concepts: ${(t.concepts || []).join(',')}${disc} | "${t.narrative || ''}"`;
   };
 
-  const newTradeStr = formatTrade(newTrade);
-  const recentStr = recentTrades.map(formatTrade).join('\n');
-  const sameMarketStr = sameMarketTrades.map(formatTrade).join('\n');
+  // Calculate concept win rates across all trades
+  const conceptStats = {};
+  for (const t of allTrades) {
+    for (const c of (t.concepts || [])) {
+      if (!conceptStats[c]) conceptStats[c] = { wins: 0, total: 0 };
+      conceptStats[c].total++;
+      if (t.outcome === 'Win') conceptStats[c].wins++;
+    }
+  }
+  const conceptSummary = Object.entries(conceptStats)
+    .map(([c, s]) => `${c}: ${((s.wins/s.total)*100).toFixed(0)}% WR (${s.total} trades)`)
+    .join(', ');
 
-  // Count recent losses for streak detection
   let lossStreak = 0;
   for (const t of recentTrades) {
     if (t.outcome === 'Loss') lossStreak++;
     else break;
   }
 
-  return `You are analyzing a trader's journal to extract behavioral insights. You are an ICT/SMC expert.
+  return `You are analyzing a trader's ICT/SMC journal to extract specific, personalized insights about their trading strategy and behavior.
 
 NEW TRADE JUST LOGGED:
-${newTradeStr}
+${formatTrade(newTrade)}
 
-RECENT TRADE HISTORY (last 15):
-${recentStr || 'No prior trades'}
+RECENT TRADE HISTORY (last 20):
+${recentTrades.map(formatTrade).join('\n') || 'No prior trades'}
 
 SAME MARKET (${newTrade.market}) HISTORY:
-${sameMarketStr || 'No prior trades in this market'}
+${sameMarketTrades.map(formatTrade).join('\n') || 'No prior trades in this market'}
+
+OVERALL CONCEPT PERFORMANCE:
+${conceptSummary || 'Not enough data yet'}
 
 ${lossStreak >= 3 ? `⚠️ WARNING: Trader is on a ${lossStreak}-trade LOSS STREAK.` : ''}
 
-Based on this data, generate EXACTLY 1-3 insights in this STRICT JSON format (no markdown, no extra text):
+Analyze this data and generate 1-3 insights. Focus on learning THIS TRADER'S specific strategy:
+- What setups do they actually take? What conditions do they look for?
+- What are their personal rules (stated or implied from their narratives)?
+- What patterns repeat in their wins vs losses?
+- What is their edge, and are they sticking to it?
+
+Return ONLY a JSON array, no markdown:
 [
   {
-    "type": "pattern|rule|weakness|strength",
-    "category": "liquidity_alignment|time_price_consistency|psychological_discipline|concept_mastery|risk_management|general",
-    "content": "A single clear, specific sentence about this trader's behavior",
+    "type": "pattern|rule|weakness|strength|strategy",
+    "category": "liquidity_alignment|time_price_consistency|psychological_discipline|concept_mastery|risk_management|strategy_rule|general",
+    "content": "A specific, personalized insight about THIS trader's behavior or strategy",
     "markets": ["MARKET"],
     "concepts": ["CONCEPT"],
     "confidence": 0.1-1.0
@@ -108,29 +112,26 @@ Based on this data, generate EXACTLY 1-3 insights in this STRICT JSON format (no
 ]
 
 Rules:
-- Be SPECIFIC: reference actual markets, concepts, days, and patterns you see
-- If the trader just lost, check if it's FOMO, wrong session, or bad concept application
-- If the trader won, check what they did right that can be reinforced
-- Output ONLY the JSON array, nothing else`;
+- Be SPECIFIC — reference actual markets, concepts, sessions, and patterns from the data
+- For wins: what exactly did they do right that should be reinforced?
+- For losses: what broke down — setup quality, timing, psychology, or random variance?
+- "strategy" type is for insights about their personal trading rules and setups
+- Output ONLY the JSON array`;
 }
 
-// ─── Parse Ollama's response and store to MongoDB ─────────────────
+// ─── Parse and Store Insights ──────────────────────────────────────
 async function parseAndStoreInsights(rawResponse, trade) {
   try {
-    // Extract JSON from the response (Llama sometimes wraps in markdown)
     let jsonStr = rawResponse;
     const jsonMatch = rawResponse.match(/\[[\s\S]*\]/);
     if (jsonMatch) jsonStr = jsonMatch[0];
 
     const insights = JSON.parse(jsonStr);
-
     if (!Array.isArray(insights)) return;
 
     for (const insight of insights) {
-      // Validate required fields
       if (!insight.type || !insight.content) continue;
 
-      // Check for duplicate/similar insights
       const existing = await AIInsight.findOne({
         type: insight.type,
         category: insight.category || 'general',
@@ -139,14 +140,12 @@ async function parseAndStoreInsights(rawResponse, trade) {
       });
 
       if (existing) {
-        // Update existing insight — increase confidence and trade count
         existing.confidence = Math.min(1, existing.confidence + 0.1);
         existing.tradeCount += 1;
         existing.tradeRefs.push(trade._id);
         existing.version += 1;
         await existing.save();
       } else {
-        // Create new insight
         await AIInsight.create({
           type: insight.type,
           category: insight.category || 'general',
@@ -160,41 +159,24 @@ async function parseAndStoreInsights(rawResponse, trade) {
       }
     }
   } catch (err) {
-    // If JSON parsing fails, store the raw insight as a general note
     console.error('[MemoryService] Could not parse insight JSON:', err.message);
-    if (rawResponse && rawResponse.length > 20) {
-      await AIInsight.create({
-        type: 'pattern',
-        category: 'general',
-        content: rawResponse.substring(0, 500),
-        markets: [trade.market],
-        concepts: trade.concepts || [],
-        confidence: 0.3,
-        tradeCount: 1,
-        tradeRefs: [trade._id]
-      });
-    }
   }
 }
 
-// ─── Retrieve Relevant Memories for Prompt ────────────────────────
+// ─── Retrieve Relevant Memories ────────────────────────────────────
 async function getRelevantMemories(intent) {
   const query = { active: true };
 
-  // Filter by markets if the user is asking about specific ones
   if (intent.markets && intent.markets.length > 0) {
     query.markets = { $in: intent.markets };
   }
-
-  // Filter by concepts if mentioned
   if (intent.concepts && intent.concepts.length > 0) {
     query.concepts = { $in: intent.concepts };
   }
 
-  // Get high-confidence insights first
   const memories = await AIInsight.find(query)
     .sort({ confidence: -1, updatedAt: -1 })
-    .limit(15)
+    .limit(20)
     .lean();
 
   return memories;
@@ -206,51 +188,51 @@ function formatMemoriesForContext(memories) {
 
   return memories.map(m => {
     const conf = (m.confidence * 100).toFixed(0);
-    return `[${m.type.toUpperCase()}] (${m.category}) [${conf}% confidence, ${m.tradeCount} trades] ${m.content}`;
+    return `[${m.type.toUpperCase()}] [${conf}% confidence, seen in ${m.tradeCount} trades] ${m.content}`;
   }).join('\n');
 }
 
-// ─── Periodic Full Analysis (callable via endpoint) ───────────────
+// ─── Full Journal Analysis ─────────────────────────────────────────
 async function runFullAnalysis() {
   const trades = await Trade.find().sort({ date: -1 }).lean();
-  if (trades.length < 5) return { message: 'Need at least 5 trades for full analysis' };
+  if (trades.length < 3) return { message: 'Need at least 3 trades for full analysis' };
 
-  const prompt = `You are an expert ICT/SMC trading analyst reviewing a complete journal.
+  const formatTrade = (t) => {
+    const date = new Date(t.date).toLocaleDateString();
+    const dir = t.direction ? ` | ${t.direction}` : '';
+    const disc = t.disciplineRating ? ` | Disc:${t.disciplineRating}/5` : '';
+    return `${date} | ${t.market}${dir} | ${t.outcome} | RR:${t.rrRatio} | ${t.session || ''} | ${(t.concepts||[]).join(',')}${disc} | "${t.narrative || ''}"`;
+  };
 
-COMPLETE TRADE HISTORY (${trades.length} trades):
-${trades.map(t => {
-  const date = new Date(t.date).toLocaleDateString();
-  return `${date} | ${t.market} | ${t.outcome} | RR:${t.rrRatio} | ${(t.concepts||[]).join(',')} | "${t.narrative || ''}"`;
-}).join('\n')}
+  const prompt = `You are analyzing a complete ICT/SMC trading journal to build a deep understanding of this trader's personal strategy, strengths, and weaknesses.
 
-Perform a DEEP analysis and generate 5-8 insights in this JSON format:
+COMPLETE TRADE HISTORY (${trades.length} trades, most recent first):
+${trades.map(formatTrade).join('\n')}
+
+Generate 5-8 insights that capture:
+1. This trader's specific strategy — what setups do they take, what are their entry conditions?
+2. Their personal rules (explicit or implied from narratives)
+3. Their strongest and weakest concepts with evidence
+4. Recurring psychological patterns
+5. Best and worst sessions/markets for them specifically
+6. What separates their winning trades from losing ones
+
+Return ONLY a JSON array:
 [
   {
-    "type": "pattern|rule|weakness|strength",
-    "category": "liquidity_alignment|time_price_consistency|psychological_discipline|concept_mastery|risk_management|general",
+    "type": "pattern|rule|weakness|strength|strategy",
+    "category": "liquidity_alignment|time_price_consistency|psychological_discipline|concept_mastery|risk_management|strategy_rule|general",
     "content": "Specific insight with evidence from the data",
     "markets": ["MARKET"],
     "concepts": ["CONCEPT"],
     "confidence": 0.1-1.0
   }
-]
+]`;
 
-Focus on:
-1. Which ICT concepts the trader uses most/least effectively
-2. Time-of-day or day-of-week patterns
-3. Psychological patterns in the narratives (FOMO, revenge, discipline)
-4. Market-specific tendencies
-5. Risk management habits
+  const rawInsight = await callClaude(prompt);
+  if (!rawInsight) return { message: 'Claude unavailable' };
 
-Output ONLY the JSON array.`;
-
-  const rawInsight = await callOllama(prompt);
-  if (!rawInsight) return { message: 'Ollama unavailable' };
-
-  // Clear old general insights before rebuilding
-  await AIInsight.updateMany({ type: { $in: ['pattern', 'rule'] } }, { active: false });
-
-  // Parse and store
+  await AIInsight.updateMany({ type: { $in: ['pattern', 'rule', 'strategy'] } }, { active: false });
   await parseAndStoreInsights(rawInsight, { _id: null, market: 'ALL', concepts: [] });
 
   const count = await AIInsight.countDocuments({ active: true });
