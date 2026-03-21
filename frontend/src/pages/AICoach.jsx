@@ -41,7 +41,8 @@ const AICoach = () => {
 
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch('/api/ai/analyze', {
+      const baseURL = import.meta.env.VITE_API_URL || '';
+      const response = await fetch(`${baseURL}/api/ai/analyze`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
