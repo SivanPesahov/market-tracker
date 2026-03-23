@@ -36,7 +36,9 @@ const createTrade = async (req, res) => {
     
     // Process image URLs from Multer (uploaded to Cloudinary)
     const images = req.files ? req.files.map(file => file.path) : [];
-    
+
+    const { market, date, concepts, narrative, outcome, rrRatio, session } = req.body;
+
     // Parse concepts if they come as a JSON string (from FormData)
     let parsedConcepts = concepts;
     if (typeof concepts === 'string') {
@@ -46,8 +48,6 @@ const createTrade = async (req, res) => {
         parsedConcepts = concepts.split(',').map(c => c.trim());
       }
     }
-
-    const { market, date, concepts, narrative, outcome, rrRatio, session } = req.body;
     const trade = await Trade.create({
       market,
       date: date || Date.now(),
