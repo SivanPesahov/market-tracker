@@ -10,6 +10,9 @@ const { fetchMarketContext, formatMarketContext, formatDailyBias, setDailyBias, 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 const MODEL = 'claude-sonnet-4-6';
 
+const PROMPT_MAX_LENGTH = 2000;
+const HISTORY_CONTENT_MAX_LENGTH = 400;
+
 // ─── Main Analyze Endpoint (RAG-Enhanced, Streaming) ──────────────
 // @route   POST /api/ai/analyze
 const analyzeTrades = async (req, res) => {
@@ -17,6 +20,16 @@ const analyzeTrades = async (req, res) => {
     const { prompt, history = [], includeMarketContext } = req.body;
 
     if (!prompt) return res.status(400).json({ message: 'Prompt is required' });
+
+    // Validate prompt length
+    if (typeof prompt !== 'string' || prompt.length > PROMPT_MAX_LENGTH) {
+      return res.status(400).json({ message: `Prompt must be a string under ${PROMPT_MAX_LENGTH} characters` });
+    }
+
+    // Validate history array
+    if (!Array.isArray(history)) {
+      return res.status(400).json({ message: 'History must be an array' });
+    }
 
     // 1. RAG: Retrieve relevant trades
     const { trades, intent, totalInDb } = await retrieveRelevantTrades(prompt);
@@ -41,19 +54,22 @@ const analyzeTrades = async (req, res) => {
     const biasDoc = await getDailyBias();
     const biasCtx = formatDailyBias(biasDoc);
 
-    // 6. Conversation history (last 6 messages)
+    // 6. Conversation history (last 6 messages, validated)
     let historyCtx = '';
     if (history.length > 0) {
       const recent = history.slice(-6);
+      const validRoles = ['user', 'assistant'];
       historyCtx = '\n=== CONVERSATION HISTORY ===\n';
-      historyCtx += recent.map(m =>
-        `[${m.role === 'user' ? 'Trader' : 'Mentor'}]: ${m.content.substring(0, 400)}`
-      ).join('\n');
+      historyCtx += recent
+        .filter(m => validRoles.includes(m.role) && typeof m.content === 'string')
+        .map(m =>
+          `[${m.role === 'user' ? 'Trader' : 'Mentor'}]: ${m.content.substring(0, HISTORY_CONTENT_MAX_LENGTH)}`
+        ).join('\n');
       historyCtx += '\n';
     }
 
-    // 7. Build user message content
-    const userContent = `${statsContext}
+    // 7. Build user message content — user query kept separate from system context
+    const contextContent = `${statsContext}
 
 === LONG-TERM INSIGHTS (AI Memory) ===
 ${memoryContext}
@@ -64,9 +80,9 @@ ${marketCtx}
 ${biasCtx}
 ${historyCtx}
 === CURRENT QUERY ===
-The trader asks: "${prompt}"
+The trader asks the following question. Answer based on the context above:`;
 
-Respond following the structured format. Be specific, reference actual trade data, and categorize your advice into the three pillars.`;
+    const userContent = `${contextContent}\n\n${prompt}\n\nRespond following the structured format. Be specific, reference actual trade data, and categorize your advice into the three pillars.`;
 
     // 8. Stream response
     res.setHeader('Content-Type', 'text/plain; charset=utf-8');
@@ -90,7 +106,7 @@ Respond following the structured format. Be specific, reference actual trade dat
   } catch (error) {
     console.error('AI Error:', error);
     if (!res.headersSent) {
-      res.status(500).json({ message: error.message || 'Error communicating with AI engine' });
+      res.status(500).json({ message: 'Error communicating with AI engine' });
     } else {
       res.end();
     }
@@ -123,7 +139,7 @@ const analyzeChart = async (req, res) => {
     res.status(200).json({ chartAnalysis: chartMeta, rawResponse: responseText });
   } catch (error) {
     console.error('Chart Analysis Error:', error);
-    res.status(500).json({ message: error.message });
+    res.status(500).json({ message: 'Internal server error' });
   }
 };
 
@@ -140,7 +156,8 @@ const getMemories = async (req, res) => {
     const memories = await AIInsight.find(query).sort({ confidence: -1, updatedAt: -1 }).lean();
     res.status(200).json(memories);
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    console.error('GetMemories error:', error);
+    res.status(500).json({ message: 'Internal server error' });
   }
 };
 
@@ -155,7 +172,8 @@ const triggerFullAnalysis = async (req, res) => {
       console.error('[AI] Full analysis failed:', err.message);
     });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    console.error('FullAnalysis error:', error);
+    res.status(500).json({ message: 'Internal server error' });
   }
 };
 
@@ -168,7 +186,8 @@ const setDailyBiasEndpoint = async (req, res) => {
     const bias = await getDailyBias();
     res.status(200).json({ message: 'Daily bias set successfully', bias });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    console.error('SetDailyBias error:', error);
+    res.status(500).json({ message: 'Internal server error' });
   }
 };
 
@@ -179,7 +198,8 @@ const getTraderStats = async (req, res) => {
     const stats = await generateTradeStatistics();
     res.status(200).json(stats);
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    console.error('GetTraderStats error:', error);
+    res.status(500).json({ message: 'Internal server error' });
   }
 };
 

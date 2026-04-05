@@ -31,6 +31,7 @@ const TradeEntry = () => {
   });
   const [concepts, setConcepts] = useState([]);
   const [images, setImages] = useState([]);
+  const [notification, setNotification] = useState(null); // { type: 'success'|'error', message: string }
 
   const handleConceptChange = (e) => {
     const value = e.target.value;
@@ -64,13 +65,15 @@ const TradeEntry = () => {
 
     try {
       await axios.post('/api/trades', data);
-      alert('Trade Logged Successfully');
+      setNotification({ type: 'success', message: 'Trade logged successfully' });
       setFormData({ market: 'NAS100', date: new Date().toISOString().split('T')[0], outcome: 'Win', rrRatio: '', narrative: '', session: 'NY AM', direction: 'Long', disciplineRating: 3 });
       setConcepts([]);
       setImages([]);
+      setTimeout(() => setNotification(null), 4000);
     } catch (error) {
       console.error(error);
-      alert('Failed to log trade');
+      setNotification({ type: 'error', message: 'Failed to log trade. Please try again.' });
+      setTimeout(() => setNotification(null), 4000);
     }
   };
 
@@ -81,6 +84,15 @@ const TradeEntry = () => {
 
   return (
     <div className="p-4 lg:p-12 max-w-6xl mx-auto animate-fade-in">
+      {notification && (
+        <div className={`mb-6 px-5 py-4 rounded-2xl text-sm font-bold border ${
+          notification.type === 'success'
+            ? 'bg-trade-green/10 border-trade-green/30 text-trade-green'
+            : 'bg-trade-red/10 border-trade-red/30 text-trade-red'
+        }`}>
+          {notification.message}
+        </div>
+      )}
       <div className="relative">
         {/* Decor */}
         <div className="absolute -top-24 -left-24 w-64 h-64 bg-trade-green/5 blur-[120px] rounded-full pointer-events-none"/>

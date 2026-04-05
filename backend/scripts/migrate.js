@@ -15,10 +15,14 @@ const Trade = require('../models/Trade');
 const LOCAL_URI = 'mongodb://localhost:27017/market_tracker';
 const ATLAS_URI = process.env.MONGO_URI;
 
-const USERNAME = 'sivanp27540@gmail.com';
-const PASSWORD = 'REDACTED_PASSWORD';
+const USERNAME = process.env.ADMIN_USERNAME;
+const PASSWORD = process.env.ADMIN_PASSWORD;
 
 async function migrate() {
+  if (!USERNAME || !PASSWORD) {
+    console.error('Error: ADMIN_USERNAME and ADMIN_PASSWORD environment variables are required.');
+    process.exit(1);
+  }
   console.log('Connecting to local MongoDB...');
   const localConn = await mongoose.createConnection(LOCAL_URI).asPromise();
   const LocalTrade = localConn.model('Trade', Trade.schema);

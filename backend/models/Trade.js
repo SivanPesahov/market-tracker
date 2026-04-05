@@ -45,7 +45,11 @@ const tradeSchema = new mongoose.Schema({
   },
   images: [{
     type: String // URLs to Cloudinary images
-  }]
+  }],
+  userId: {
+    type: require('mongoose').Schema.Types.ObjectId,
+    ref: 'User'
+  }
 }, {
   timestamps: true
 });

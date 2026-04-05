@@ -7,7 +7,6 @@ const signToken = (id) => {
   });
 };
 
-
 exports.login = async (req, res) => {
   try {
     const { username, password } = req.body;
@@ -26,7 +25,8 @@ exports.login = async (req, res) => {
       }
     });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    console.error('Login error:', err);
+    res.status(500).json({ message: 'Internal server error' });
   }
 };
 
@@ -35,6 +35,29 @@ exports.getMe = async (req, res) => {
     const user = await User.findById(req.user.id).select('-password');
     res.json(user);
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    console.error('GetMe error:', err);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+};
+
+exports.changePassword = async (req, res) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ message: 'currentPassword and newPassword are required' });
+    }
+    if (newPassword.length < 8) {
+      return res.status(400).json({ message: 'New password must be at least 8 characters' });
+    }
+    const user = await User.findById(req.user.id);
+    if (!user || !(await user.comparePassword(currentPassword))) {
+      return res.status(401).json({ message: 'Current password is incorrect' });
+    }
+    user.password = newPassword;
+    await user.save();
+    res.json({ message: 'Password updated successfully' });
+  } catch (err) {
+    console.error('ChangePassword error:', err);
+    res.status(500).json({ message: 'Internal server error' });
   }
 };
