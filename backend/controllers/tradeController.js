@@ -65,7 +65,7 @@ const getTradeById = async (req, res) => {
 // ── POST /api/trades ──────────────────────────────────────────────────────────
 const createTrade = async (req, res) => {
   try {
-    const images = req.files ? req.files.map(file => file.path) : [];
+    const images = req.files ? req.files.map(file => file.path || file.secure_url || file.url) : [];
     const { market, date, concepts, narrative, outcome, rrRatio, session,
             direction, disciplineRating } = req.body;
 
@@ -109,7 +109,7 @@ const updateTrade = async (req, res) => {
             direction, disciplineRating } = req.body;
 
     // Merge new images with existing ones
-    const newImages = req.files?.length ? req.files.map(f => f.path) : [];
+    const newImages = req.files?.length ? req.files.map(f => f.path || f.secure_url || f.url) : [];
     const images    = [...trade.images, ...newImages];
 
     const update = {};
