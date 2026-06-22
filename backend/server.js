@@ -38,6 +38,7 @@ app.use(helmet());
 // ── CORS — explicit allowlist, no wildcards (OWASP A05) ──────────────────────
 const allowedOrigins = [
   'http://localhost:5173',
+  'http://localhost:5174',
   process.env.FRONTEND_URL,
 ].filter(Boolean);
 

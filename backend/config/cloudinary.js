@@ -1,4 +1,5 @@
-const cloudinary = require('cloudinary').v2;
+const cloudinaryRoot = require('cloudinary');
+const cloudinary = cloudinaryRoot.v2;
 const cloudinaryStorage = require('multer-storage-cloudinary');
 const multer = require('multer');
 
@@ -9,7 +10,9 @@ cloudinary.config({
 });
 
 const storage = cloudinaryStorage({
-  cloudinary: cloudinary,
+  // multer-storage-cloudinary@2.x internally does `this.cloudinary.v2.uploader...`,
+  // so it needs the root module (which has `.v2`), not the unwrapped v2 object.
+  cloudinary: cloudinaryRoot,
   folder: 'market_tracker_trades',
   allowedFormats: ['jpeg', 'png', 'jpg'],
   transformation: [{ width: 1200, crop: 'limit' }]
