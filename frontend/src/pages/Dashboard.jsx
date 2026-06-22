@@ -13,6 +13,7 @@ import {
   Clock,
   Activity,
   BarChart2,
+  ImagePlus,
 } from 'lucide-react';
 
 // ─── Equity Curve SVG ───────────────────────────────────────────────
@@ -106,6 +107,7 @@ const Dashboard = () => {
   const [deleteConfirm, setDeleteConfirm] = useState(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [lightboxImage, setLightboxImage] = useState(null);
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
   const [startingBalance, setStartingBalance] = useState('10000');
   const [riskPerTrade, setRiskPerTrade] = useState('100');
   const [period, setPeriod] = useState('all');
@@ -186,6 +188,23 @@ const Dashboard = () => {
   };
 
   const closeModal = () => { setIsModalOpen(false); setViewingTrade(null); setDeleteConfirm(null); };
+
+  const handleImageUpload = async (tradeId, files) => {
+    if (!files?.length) return;
+    setIsUploadingImage(true);
+    try {
+      const formData = new FormData();
+      Array.from(files).forEach(file => formData.append('images', file));
+      const { data } = await axios.put(`/api/trades/${tradeId}`, formData);
+      setTrades(prev => prev.map(t => (t._id === tradeId ? data : t)));
+      setSelectedDayTrades(prev => prev.map(t => (t._id === tradeId ? data : t)));
+      setViewingTrade(prev => (prev?._id === tradeId ? data : prev));
+    } catch (err) {
+      console.error('Failed to upload image:', err);
+    } finally {
+      setIsUploadingImage(false);
+    }
+  };
 
   const tileClassName = ({ date: d, view }) => {
     if (view === 'month') {
@@ -593,9 +612,25 @@ const Dashboard = () => {
                                 </div>
                               </div>
                               <div>
-                                <h4 className="text-[10px] font-black text-gray-500 uppercase tracking-[0.2em] mb-4">Visual Evidence</h4>
+                                <div className="flex items-center justify-between mb-4">
+                                  <h4 className="text-[10px] font-black text-gray-500 uppercase tracking-[0.2em]">Visual Evidence</h4>
+                                  <label className={`flex items-center gap-1.5 text-[10px] font-black text-trade-blue px-3 py-1.5 rounded-lg border border-trade-blue/20 bg-trade-blue/10 hover:bg-trade-blue/20 transition-all cursor-pointer ${isUploadingImage ? 'opacity-50 pointer-events-none' : ''}`}>
+                                    <ImagePlus size={13} />
+                                    {isUploadingImage ? 'Uploading...' : 'Add Image'}
+                                    <input
+                                      type="file"
+                                      accept="image/jpeg,image/png"
+                                      multiple
+                                      className="hidden"
+                                      onChange={e => {
+                                        handleImageUpload(t._id, e.target.files);
+                                        e.target.value = '';
+                                      }}
+                                    />
+                                  </label>
+                                </div>
                                 <div className="grid grid-cols-1 gap-4">
-                                  {t.images?.map((img, idx) => (
+                                  {t.images?.filter(Boolean).map((img, idx) => (
                                     <div key={idx} className="relative group cursor-zoom-in rounded-2xl overflow-hidden border border-dark-700 shadow-xl aspect-video" onClick={() => setLightboxImage(img)}>
                                       <img src={img} alt="" className="w-full h-full object-cover group-hover:scale-105 transition-all duration-700" />
                                       <div className="absolute inset-0 bg-dark-950/0 group-hover:bg-dark-950/40 transition-all flex items-center justify-center">
@@ -603,6 +638,7 @@ const Dashboard = () => {
                                       </div>
                                     </div>
                                   ))}
+                                  {!t.images?.filter(Boolean).length && <p className="text-sm text-gray-600">No charts attached.</p>}
                                 </div>
                               </div>
                             </div>
