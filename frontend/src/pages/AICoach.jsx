@@ -86,11 +86,11 @@ const AICoach = () => {
   };
 
   return (
-    <div className="p-4 lg:p-12 h-[calc(100vh-4rem)] lg:h-screen flex flex-col animate-fade-in">
-      <div className="flex-1 max-w-5xl mx-auto w-full flex flex-col bg-dark-850 rounded-3xl border border-dark-700 shadow-2xl overflow-hidden relative">
-        
+    <div className="h-[calc(100vh-4rem)] lg:h-screen flex flex-col animate-fade-in">
+      <div className="flex-1 max-w-5xl mx-auto w-full flex flex-col relative">
+
         {/* Header */}
-        <div className="bg-dark-800/80 backdrop-blur-md border-b border-dark-700 p-6 flex items-center justify-between z-10">
+        <div className="px-4 lg:px-0 pt-4 lg:pt-12 pb-6 border-b border-dark-700 flex items-center justify-between z-10">
           <div className="flex items-center gap-4">
             <div className="w-12 h-12 bg-trade-blue/20 rounded-2xl flex items-center justify-center relative">
               <BrainCircuit className="text-trade-blue h-6 w-6" />
@@ -110,9 +110,9 @@ const AICoach = () => {
         </div>
 
         {/* Chat Area */}
-        <div 
+        <div
           ref={scrollRef}
-          className="flex-1 overflow-y-auto p-6 lg:p-10 space-y-8 bg-dark-900/40 custom-scrollbar"
+          className="flex-1 overflow-y-auto px-4 lg:px-0 py-8 space-y-8 custom-scrollbar"
         >
           <AnimatePresence initial={false}>
             {messages.map((msg, idx) => msg.role === 'ai' && msg.content === '' ? null : (
@@ -165,28 +165,8 @@ const AICoach = () => {
           )}
         </div>
 
-        {/* Quick Actions */}
-        <div className="px-6 lg:px-8 pt-4 bg-dark-800/50 border-t border-dark-700 flex flex-wrap gap-2">
-          {[
-            'Give me a full review of my trades this week',
-            'What are my biggest weaknesses right now?',
-            'Which concepts are performing best for me?',
-            'Pre-trade check: I see an FVG + MSS on NAS100 NY AM — does this align with my edge?',
-          ].map(q => (
-            <button
-              key={q}
-              type="button"
-              onClick={() => setPrompt(q)}
-              disabled={isLoading}
-              className="px-3 py-1.5 bg-dark-900 border border-dark-700 hover:border-trade-blue/40 text-gray-400 hover:text-trade-blue rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all disabled:opacity-40"
-            >
-              {q.length > 40 ? q.slice(0, 40) + '…' : q}
-            </button>
-          ))}
-        </div>
-
         {/* Input Area */}
-        <div className="p-6 lg:p-8 bg-dark-800/50">
+        <div className="px-4 lg:px-0 pt-4 pb-6 lg:pb-12 border-t border-dark-700">
           <form onSubmit={handleSend} className="relative flex items-center max-w-4xl mx-auto w-full group">
             <input 
               type="text" 
@@ -208,12 +188,12 @@ const AICoach = () => {
             </button>
           </form>
           <div className="mt-4 flex justify-center items-center gap-6">
-            <p className="text-[10px] text-gray-600 font-bold uppercase tracking-[0.2em] flex items-center gap-2">
-              <div className="w-1 h-1 rounded-full bg-trade-green"/> System Online
-            </p>
-            <p className="text-[10px] text-gray-600 font-bold uppercase tracking-[0.2em] flex items-center gap-2 cursor-pointer hover:text-gray-400">
+            <span className="text-[10px] text-gray-600 font-bold uppercase tracking-[0.2em] flex items-center gap-2">
+              <span className="w-1 h-1 rounded-full bg-trade-green"/> System Online
+            </span>
+            <span className="text-[10px] text-gray-600 font-bold uppercase tracking-[0.2em] flex items-center gap-2 cursor-pointer hover:text-gray-400">
               Model: Claude Sonnet <ChevronDown size={10}/>
-            </p>
+            </span>
           </div>
         </div>
 
